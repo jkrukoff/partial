@@ -1,0 +1,11 @@
+{application, partial,
+ [{description, "Utility library for partial function application."},
+  {vsn, "1.0.0"},
+  {applications, [kernel,
+                  stdlib]},
+  {maintainers, ["John Krukoff"]},
+  {modules, [partial]},
+  {registered, []},
+  {env, []},
+  {licenses, ["Apache 2.0"]},
+  {links, [{"GitHub", "https://github.com/jkrukoff/partial"}]}]}.
