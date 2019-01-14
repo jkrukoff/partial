@@ -51,7 +51,7 @@ cute(_Fun) ->
 
 parse_transform(Forms, _Options) ->
     ok = io:format("Forms = ~p~n", [Forms]),
-    Transformed = transform(Forms),
+    Transformed = [transform_maybe_error(Form) || Form <- Forms],
     ok = io:format("Transformed Forms = ~p~n", [Transformed]),
     Transformed.
 
@@ -68,16 +68,35 @@ missing_parse_transform() ->
            "indirectly in a way the parse transform can not "
            "recognize, such as via apply/3."}).
 
+transform_maybe_error(Form) ->
+    % Parse errors can only appear as top level forms. When an error
+    % occurs parsing a partial marker function, we throw an exception
+    % and report it at a level the compiler can cope with.
+    % Unfortunately, this only allows reporting on the first error
+    % found in a given form.
+    [Transformed] = try transform([Form])
+                    catch
+                        {transform_error, What} ->
+                            [{error, What}]
+                    end,
+    Transformed.
+
+transform_error(Line, Message) ->
+    % I'm probably abusing the error system by using erl_parse here,
+    % but it allows my errors to show up as usual in the compiler
+    % output.
+    throw({transform_error, {Line, erl_parse, Message}}).
+
 transform([]) ->
     [];
-transform([{call, _Line, Name, Args} = Form | Forms]) ->
+transform([{call, Line, Name, Args} = Form | Forms]) ->
     Transformed = case Name of
         {remote, _, {atom, _, partial}, {atom, _, cut}} ->
             ok = io:format("Found cut: ~w~n", [Args]),
-            cut_function(transform(Args));
+            cut_function(Line, transform(Args));
         {remote, _, {atom, _, partial}, {atom, _, cute}} ->
             ok = io:format("Found cute: ~w~n", [Args]),
-            cute_function(transform(Args));
+            cute_function(Line, transform(Args));
         _ ->
             list_to_tuple(transform(tuple_to_list(Form)))
     end,
@@ -101,7 +120,7 @@ variable_name(Type, Line) ->
     Name = io_lib:format("PartialArgument_~s_~b_~b", [Type, Line, unique()]),
     erlang:list_to_atom(Name).
 
-cut_function([{call, Line, Name, Args}]) ->
+cut_function(_MarkerLine, [{call, Line, Name, Args}]) ->
     CutVariables = cut_variables(Line, Args),
     CutArguments = cut_arguments(Args, CutVariables),
     {'fun', Line,
@@ -112,11 +131,12 @@ cut_function([{call, Line, Name, Args}]) ->
         [{call, Line,
           Name,
           CutArguments}]}]}};
-cut_function(_) ->
-    {error,
-     "partial:cut/1 requires a single function call as the argument."}.
+cut_function(MarkerLine, _) ->
+    transform_error(
+      MarkerLine,
+      "Error: partial:cut/1 requires a single function call as an argument").
 
-cute_function([{call, Line, Name, Args}]) ->
+cute_function(_MarkerLine, [{call, Line, Name, Args}]) ->
     CutVariables = cut_variables(Line, Args),
     CuteMatches = cute_matches(Line, Args),
     CuteVariables = cute_variables(CuteMatches),
@@ -137,9 +157,10 @@ cute_function([{call, Line, Name, Args}]) ->
                 Name,
                 CuteArguments}]}]}}]}]}},
      []};
-cute_function(_) ->
-    {error,
-     "partial:cute/1 requires a single function call as the argument."}.
+cute_function(MarkerLine, _) ->
+    transform_error(
+      MarkerLine,
+      "Error: partial:cute/1 requires a single function call as an argument").
 
 cut_variables(Line, Args) ->
     [{var, Line, variable_name(cut, Line)} || Arg <- Args, is_cut_variable(Arg)].

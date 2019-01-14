@@ -25,6 +25,15 @@ dummy(Arg1, Arg2, Arg3) ->
 passthrough_test() ->
     ?assert(true).
 
+% These tests trigger the compiler error handling, and prevent the
+% rest of the tests from running.
+%
+% cut_argument_compile_error_test() ->
+%     partial:cut(atom).
+% 
+% cute_argument_compile_error_test() ->
+%     partial:cute(atom).
+
 cut_with_no_args_test() ->
     Partial = partial:cut(dummy()),
     ?assert(Partial()).
