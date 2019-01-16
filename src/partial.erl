@@ -5,6 +5,9 @@
 %%%-------------------------------------------------------------------
 -module(partial).
 
+-define(MATCH_REMOTE(Module, Name),
+        {remote, _, {atom, _, Module}, {atom, _, Name}}).
+
 %% API
 -export([cut/1,
          cute/1,
@@ -63,10 +66,24 @@ missing_parse_transform() ->
     throw({missing_parse_transform,
            "This function requires that the partial:parse_trans/2 "
            "function be listed as a parse transformation for your "
-           "module as \"-compile({parse_transform, partial}).\""
-           "If that is true, this function has been called "
+           "module as \"-compile({parse_transform, partial}).\" "
+           "If that is already true, this function has been called "
            "indirectly in a way the parse transform can not "
            "recognize, such as via apply/3."}).
+
+% walk(Fun, [], Acc) ->
+%     Acc;
+% walk(Fun, [Form | Forms], Acc) when is_atom(element(1, Form)) ->
+%     FormAcc = Fun(Form, Acc),
+%     ChildAcc = walk(Fun, tuple_to_list(Form), FormAcc),
+%     walk(Fun, Forms, ChildAcc);
+% walk(Fun, [List | Forms], Acc) when is_list(List) ->
+%     ChildAcc = walk(Fun, List, Acc),
+%     walk(Fun, Forms, ChildAcc);
+% walk(Fun, [Form | Forms], Acc) ->
+%     walk(Fun, Forms, Acc);
+% walk(Fun, Form, Acc) ->
+%     Acc.
 
 transform_maybe_error(Form) ->
     % Parse errors can only appear as top level forms. When an error
@@ -85,21 +102,18 @@ transform_error(Line, Message) ->
     % I'm probably abusing the error system by using erl_parse here,
     % but it allows my errors to show up as usual in the compiler
     % output.
-    throw({transform_error, {Line, erl_parse, Message}}).
+    Prefix = "Error: In partial:parse_transform/2, ",
+    throw({transform_error, {Line, erl_parse, Prefix ++ Message}}).
 
 transform([]) ->
     [];
-transform([{call, Line, Name, Args} = Form | Forms]) ->
-    Transformed = case Name of
-        {remote, _, {atom, _, partial}, {atom, _, cut}} ->
-            ok = io:format("Found cut: ~w~n", [Args]),
-            cut_function(Line, transform(Args));
-        {remote, _, {atom, _, partial}, {atom, _, cute}} ->
-            ok = io:format("Found cute: ~w~n", [Args]),
-            cute_function(Line, transform(Args));
-        _ ->
-            list_to_tuple(transform(tuple_to_list(Form)))
-    end,
+transform([{call, Line, ?MATCH_REMOTE(partial, cut), Args} | Forms]) ->
+    ok = io:format("Found cut: ~w~n", [Args]),
+    Transformed = cut_function(Line, transform(Args)),
+    [Transformed | transform(Forms)];
+transform([{call, Line, ?MATCH_REMOTE(partial, cute), Args} | Forms]) ->
+    ok = io:format("Found cute: ~w~n", [Args]),
+    Transformed = cute_function(Line, transform(Args)),
     [Transformed | transform(Forms)];
 transform([Form | Forms]) when is_atom(element(1, Form)) ->
     [list_to_tuple(transform(tuple_to_list(Form))) | transform(Forms)];
@@ -113,12 +127,9 @@ transform(Form) ->
 is_cut_variable({var, _Line, '_'}) -> true;
 is_cut_variable(_) -> false.
 
-unique() ->
-    erlang:unique_integer([monotonic, positive]).
-
-variable_name(Type, Line) ->
-    Name = io_lib:format("PartialArgument_~s_~b_~b", [Type, Line, unique()]),
-    erlang:list_to_atom(Name).
+variable_name(Type) ->
+    Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
+    erlang:list_to_atom(lists:flatten(Name)).
 
 cut_function(_MarkerLine, [{call, Line, Name, Args}]) ->
     CutVariables = cut_variables(Line, Args),
@@ -134,7 +145,7 @@ cut_function(_MarkerLine, [{call, Line, Name, Args}]) ->
 cut_function(MarkerLine, _) ->
     transform_error(
       MarkerLine,
-      "Error: partial:cut/1 requires a single function call as an argument").
+      "partial:cut/1 requires a single function call as an argument").
 
 cute_function(_MarkerLine, [{call, Line, Name, Args}]) ->
     CutVariables = cut_variables(Line, Args),
@@ -160,10 +171,10 @@ cute_function(_MarkerLine, [{call, Line, Name, Args}]) ->
 cute_function(MarkerLine, _) ->
     transform_error(
       MarkerLine,
-      "Error: partial:cute/1 requires a single function call as an argument").
+      "partial:cute/1 requires a single function call as an argument").
 
 cut_variables(Line, Args) ->
-    [{var, Line, variable_name(cut, Line)} || Arg <- Args, is_cut_variable(Arg)].
+    [{var, Line, variable_name(cut)} || Arg <- Args, is_cut_variable(Arg)].
 
 cut_arguments([], []) ->
     [];
@@ -176,7 +187,7 @@ cut_arguments([Arg | Args], Variables) ->
     end.
 
 cute_matches(Line, Args) ->
-    [{match, Line, {var, Line, variable_name(cute, Line)}, Arg} ||
+    [{match, Line, {var, Line, variable_name(cute)}, Arg} ||
      Arg <- Args,
      not is_cut_variable(Arg)].
 
