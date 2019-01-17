@@ -53,9 +53,9 @@ cute(_Fun) ->
     missing_parse_transform().
 
 parse_transform(Forms, _Options) ->
-    ok = io:format("Forms = ~p~n", [Forms]),
-    Transformed = [transform_maybe_error(Form) || Form <- Forms],
-    ok = io:format("Transformed Forms = ~p~n", [Transformed]),
+    % ok = io:format("Forms = ~p~n", [Forms]),
+    Transformed = transform_forms(Forms),
+    % ok = io:format("Transformed Forms = ~p~n", [Transformed]),
     Transformed.
 
 %%%===================================================================
@@ -71,110 +71,120 @@ missing_parse_transform() ->
            "indirectly in a way the parse transform can not "
            "recognize, such as via apply/3."}).
 
-% walk(Fun, [], Acc) ->
-%     Acc;
-% walk(Fun, [Form | Forms], Acc) when is_atom(element(1, Form)) ->
-%     FormAcc = Fun(Form, Acc),
-%     ChildAcc = walk(Fun, tuple_to_list(Form), FormAcc),
-%     walk(Fun, Forms, ChildAcc);
-% walk(Fun, [List | Forms], Acc) when is_list(List) ->
-%     ChildAcc = walk(Fun, List, Acc),
-%     walk(Fun, Forms, ChildAcc);
-% walk(Fun, [Form | Forms], Acc) ->
-%     walk(Fun, Forms, Acc);
-% walk(Fun, Form, Acc) ->
-%     Acc.
+transform_forms(Forms) ->
+    % If any errors occured, we replace the entire form with them.
+    % This allows the standard compiler chaing to pick them up as if
+    % they were erl_parse errors and display a standard error message
+    % to the user instead of a traceback.
+    erl_syntax:revert_forms(
+      lists:append(
+          [case erl_syntax_lib:mapfold(fun transform/2, [], Form) of
+               {Transformed, []} ->
+                   [Transformed];
+               {_Transformed, Errors} ->
+                   Errors
+           end || Form <- Forms])).
 
-transform_maybe_error(Form) ->
-    % Parse errors can only appear as top level forms. When an error
-    % occurs parsing a partial marker function, we throw an exception
-    % and report it at a level the compiler can cope with.
-    % Unfortunately, this only allows reporting on the first error
-    % found in a given form.
-    [Transformed] = try transform([Form])
-                    catch
-                        {transform_error, What} ->
-                            [{error, What}]
-                    end,
-    Transformed.
+transform(Form, Errors) ->
+    Line = erl_syntax:get_pos(Form),
+    Transformed = case Form of
+        ?Q("partial:cut(_@@Args)") ->
+            io:format("Cut Args ~p~n", [Args]),
+            Cut = cut_function(Line, Args),
+            io:format("Cut Transform ~p~n", [Cut]),
+            Cut;
+        ?Q("partial:cute(_@@Args)") ->
+            io:format("Cute Args ~p~n", [Args]),
+            Cute = cute_function(Line, Args),
+            io:format("Cute Transform ~p~n", [Cute]),
+            Cute;
+        _ ->
+            {ok, Form}
+    end,
+    case Transformed of
+        {ok, NewForm} ->
+            {NewForm, Errors};
+        {error, Error} ->
+            {Form, [Error | Errors]}
+    end.
 
 transform_error(Line, Message) ->
     % I'm probably abusing the error system by using erl_parse here,
     % but it allows my errors to show up as usual in the compiler
     % output.
     Prefix = "Error: In partial:parse_transform/2, ",
-    throw({transform_error, {Line, erl_parse, Prefix ++ Message}}).
+    {error, erl_syntax:error_marker({Line, erl_parse, Prefix ++ Message})}.
 
-transform([]) ->
-    [];
-transform([{call, Line, ?MATCH_REMOTE(partial, cut), Args} | Forms]) ->
-    ok = io:format("Found cut: ~w~n", [Args]),
-    Transformed = cut_function(Line, transform(Args)),
-    [Transformed | transform(Forms)];
-transform([{call, Line, ?MATCH_REMOTE(partial, cute), Args} | Forms]) ->
-    ok = io:format("Found cute: ~w~n", [Args]),
-    Transformed = cute_function(Line, transform(Args)),
-    [Transformed | transform(Forms)];
-transform([Form | Forms]) when is_atom(element(1, Form)) ->
-    [list_to_tuple(transform(tuple_to_list(Form))) | transform(Forms)];
-transform([List | Forms]) when is_list(List) ->
-    [transform(List) | transform(Forms)];
-transform([Form | Forms]) ->
-    [Form | transform(Forms)];
-transform(Form) ->
-    Form.
+cut_function(MarkerLine, [MarkerArgument])->
+    case MarkerArgument of
+        ?Q("_@Name(_@@Args)") ->
+            Line = erl_syntax:get_pos(MarkerArgument),
+            CutVariables = cut_variables(Line, Args),
+            CutArguments = cut_arguments(Args, CutVariables),
+            CutFun = erl_syntax:set_pos(
+                       ?Q("fun (_@@CutVariables) ->"
+                          " _@Name(_@@CutArguments)"
+                          " end"),
+                       Line),
+            {ok, CutFun};
+        _ ->
+            transform_error(
+              MarkerLine,
+              "partial:cut/1 requires a function call as an argument")
+    end;
+cut_function(MarkerLine, MarkerArguments) ->
+    transform_error(
+      MarkerLine,
+      io_lib:format(
+        "partial:cut/1 requires a single argument, got ~b",
+        [length(MarkerArguments)])).
 
-is_cut_variable({var, _Line, '_'}) -> true;
-is_cut_variable(_) -> false.
+cute_function(MarkerLine, [MarkerArgument])->
+    case MarkerArgument of
+        ?Q("_@Name(_@@Args)") ->
+            Line = erl_syntax:get_pos(MarkerArgument),
+            CutVariables = cut_variables(Line, Args),
+            CuteMatches = cute_matches(Line, Args),
+            CuteVariables = cute_variables(CuteMatches),
+            CuteArguments = cute_arguments(Args, CutVariables, CuteVariables),
+            CuteFun = erl_syntax:set_pos(
+                        ?Q("(fun () ->"
+                           " _@@CuteMatches,"
+                           " fun (_@@CutVariables) -> _@Name(_@@CuteArguments) end"
+                           " end)()"),
+                        Line),
+            {ok, CuteFun};
+        _ ->
+            transform_error(
+              MarkerLine,
+              "partial:cute/1 requires a function call as an argument")
+    end;
+cute_function(MarkerLine, MarkerArguments)->
+    transform_error(
+      MarkerLine,
+      io_lib:format(
+        "partial:cute/1 requires a single argument, got ~b",
+        [length(MarkerArguments)])).
+
+is_cut_variable(Var) ->
+    case Var of
+        ?Q("_") ->
+            true;
+        _ ->
+            false
+    end.
 
 variable_name(Type) ->
     Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
     erlang:list_to_atom(lists:flatten(Name)).
 
-cut_function(_MarkerLine, [{call, Line, Name, Args}]) ->
-    CutVariables = cut_variables(Line, Args),
-    CutArguments = cut_arguments(Args, CutVariables),
-    {'fun', Line,
-     {clauses,
-      [{clause, Line,
-        CutVariables,
-        [],
-        [{call, Line,
-          Name,
-          CutArguments}]}]}};
-cut_function(MarkerLine, _) ->
-    transform_error(
-      MarkerLine,
-      "partial:cut/1 requires a single function call as an argument").
-
-cute_function(_MarkerLine, [{call, Line, Name, Args}]) ->
-    CutVariables = cut_variables(Line, Args),
-    CuteMatches = cute_matches(Line, Args),
-    CuteVariables = cute_variables(CuteMatches),
-    CuteArguments = cute_arguments(Args, CutVariables, CuteVariables),
-    {call, Line,
-     {'fun', Line,
-      {clauses,
-       [{clause, Line,
-         [],
-         [],
-         CuteMatches ++
-         [{'fun', Line,
-           {clauses,
-            [{clause, Line,
-              CutVariables,
-              [],
-              [{call, Line,
-                Name,
-                CuteArguments}]}]}}]}]}},
-     []};
-cute_function(MarkerLine, _) ->
-    transform_error(
-      MarkerLine,
-      "partial:cute/1 requires a single function call as an argument").
-
 cut_variables(Line, Args) ->
-    [{var, Line, variable_name(cut)} || Arg <- Args, is_cut_variable(Arg)].
+    [erl_syntax:set_pos(
+       erl_syntax:variable(
+         variable_name(cut)),
+       Line) ||
+     Arg <- Args,
+     is_cut_variable(Arg)].
 
 cut_arguments([], []) ->
     [];
@@ -187,19 +197,33 @@ cut_arguments([Arg | Args], Variables) ->
     end.
 
 cute_matches(Line, Args) ->
-    [{match, Line, {var, Line, variable_name(cute)}, Arg} ||
+    [erl_syntax:set_pos(
+       erl_syntax:match_expr(
+           erl_syntax:set_pos(
+             erl_syntax:variable(variable_name(cute)),
+             Line),
+           Arg),
+       Line) ||
      Arg <- Args,
      not is_cut_variable(Arg)].
 
 cute_variables(Matches) ->
-    [Variable || {match, _, Variable, _} <- Matches].
+    ExtractPattern = fun (Match) ->
+        ?Q("_@Pattern = _@_") = Match,
+        Pattern
+    end,
+    [ExtractPattern(Match) || Match <- Matches].
 
 cute_arguments([], [], []) ->
     [];
 cute_arguments([Arg | Args], CutVariables, CuteVariables) ->
     case is_cut_variable(Arg) of
         true ->
-            [hd(CutVariables) | cute_arguments(Args, tl(CutVariables), CuteVariables)];
+            [hd(CutVariables) | cute_arguments(Args,
+                                               tl(CutVariables),
+                                               CuteVariables)];
         false ->
-            [hd(CuteVariables) | cute_arguments(Args, CutVariables, tl(CuteVariables))]
+            [hd(CuteVariables) | cute_arguments(Args,
+                                                CutVariables,
+                                                tl(CuteVariables))]
     end.

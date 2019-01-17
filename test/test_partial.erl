@@ -29,10 +29,12 @@ passthrough_test() ->
 % rest of the tests from running.
 %
 % cut_argument_compile_error_test() ->
-%     partial:cut(atom).
+%     partial:cut(atom),
+%     partial:cut(dummy(), dummy()).
 % 
 % cute_argument_compile_error_test() ->
-%     partial:cute(atom).
+%     partial:cute(atom),
+%     partial:cute(dummy(), dummy()).
 
 cut_with_no_args_test() ->
     Partial = partial:cut(dummy()),
@@ -45,8 +47,7 @@ cut_with_no_cuts_test() ->
 cut_evaluation_time_test() ->
     Partial = partial:cut(
                 dummy(
-                  erlang:unique_integer(
-                    [monotonic, positive]))),
+                  erlang:unique_integer())),
     ?assertNotEqual(Partial(), Partial()).
 
 cut_with_all_cuts_test() ->
@@ -68,8 +69,7 @@ cute_with_no_cuts_test() ->
 cute_evaluation_time_test() ->
     Partial = partial:cute(
                 dummy(
-                  erlang:unique_integer(
-                    [monotonic, positive]))),
+                  erlang:unique_integer())),
     ?assertEqual(Partial(), Partial()).
 
 cute_with_all_cuts_test() ->
