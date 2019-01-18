@@ -5,6 +5,14 @@
 %%%-------------------------------------------------------------------
 -module(partial).
 
+% -define(DEBUG_PARSE_TRANSFORM, true).
+
+-ifdef(DEBUG_PARSE_TRANSFORM).
+-define(IF_DEBUG(Expression), Expression).
+-else.
+-define(IF_DEBUG(Expression), (ok)).
+-endif.
+
 -define(MATCH_REMOTE(Module, Name),
         {remote, _, {atom, _, Module}, {atom, _, Name}}).
 
@@ -53,10 +61,7 @@ cute(_Fun) ->
     missing_parse_transform().
 
 parse_transform(Forms, _Options) ->
-    % ok = io:format("Forms = ~p~n", [Forms]),
-    Transformed = transform_forms(Forms),
-    % ok = io:format("Transformed Forms = ~p~n", [Transformed]),
-    Transformed.
+    transform_forms(Forms).
 
 %%%===================================================================
 %%% Internal Functions
@@ -89,14 +94,22 @@ transform(Form, Errors) ->
     Line = erl_syntax:get_pos(Form),
     Transformed = case Form of
         ?Q("partial:cut(_@@Args)") ->
-            io:format("Cut Args ~p~n", [Args]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:parse_transform/2 Cut Args ~p~n",
+                             [Args])),
             Cut = cut_function(Line, Args),
-            io:format("Cut Transform ~p~n", [Cut]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:parse_transform/2 Cut Transform ~p~n",
+                             [Cut])),
             Cut;
         ?Q("partial:cute(_@@Args)") ->
-            io:format("Cute Args ~p~n", [Args]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:parse_transform/2 Cute Args ~p~n",
+                             [Args])),
             Cute = cute_function(Line, Args),
-            io:format("Cute Transform ~p~n", [Cute]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:parse_transform/2 Cute Transform ~p~n",
+                             [Cute])),
             Cute;
         _ ->
             {ok, Form}
@@ -121,11 +134,13 @@ cut_function(MarkerLine, [MarkerArgument])->
             Line = erl_syntax:get_pos(MarkerArgument),
             CutVariables = cut_variables(Line, Args),
             CutArguments = cut_arguments(Args, CutVariables),
-            CutFun = erl_syntax:set_pos(
-                       ?Q("fun (_@@CutVariables) ->"
-                          " _@Name(_@@CutArguments)"
-                          " end"),
-                       Line),
+            CutFun = merl:qquote(Line,
+                                 "fun (_@@variables) ->"
+                                 " _@name(_@@arguments)"
+                                 " end",
+                                 [{variables, CutVariables},
+                                  {name, Name},
+                                  {arguments, CutArguments}]),
             {ok, CutFun};
         _ ->
             transform_error(
@@ -147,12 +162,15 @@ cute_function(MarkerLine, [MarkerArgument])->
             CuteMatches = cute_matches(Line, Args),
             CuteVariables = cute_variables(CuteMatches),
             CuteArguments = cute_arguments(Args, CutVariables, CuteVariables),
-            CuteFun = erl_syntax:set_pos(
-                        ?Q("(fun () ->"
-                           " _@@CuteMatches,"
-                           " fun (_@@CutVariables) -> _@Name(_@@CuteArguments) end"
-                           " end)()"),
-                        Line),
+            CuteFun = merl:qquote(Line,
+                                  "(fun () ->"
+                                  " _@@matches,"
+                                  " fun (_@@variables) -> _@name(_@@arguments) end"
+                                  " end)()",
+                                  [{matches, CuteMatches},
+                                   {variables, CutVariables},
+                                   {name, Name},
+                                   {arguments, CuteArguments}]),
             {ok, CuteFun};
         _ ->
             transform_error(
@@ -178,13 +196,11 @@ variable_name(Type) ->
     Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
     erlang:list_to_atom(lists:flatten(Name)).
 
+variable(Line, Type) ->
+    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Line).
+
 cut_variables(Line, Args) ->
-    [erl_syntax:set_pos(
-       erl_syntax:variable(
-         variable_name(cut)),
-       Line) ||
-     Arg <- Args,
-     is_cut_variable(Arg)].
+    [variable(Line, cut) || Arg <- Args, is_cut_variable(Arg)].
 
 cut_arguments([], []) ->
     [];
@@ -197,22 +213,18 @@ cut_arguments([Arg | Args], Variables) ->
     end.
 
 cute_matches(Line, Args) ->
-    [erl_syntax:set_pos(
-       erl_syntax:match_expr(
-           erl_syntax:set_pos(
-             erl_syntax:variable(variable_name(cute)),
-             Line),
-           Arg),
-       Line) ||
-     Arg <- Args,
-     not is_cut_variable(Arg)].
+    MatchExpr = fun (Arg) -> 
+        Pattern = variable(Line, cute),
+        merl:qquote(Line,
+                    "_@pattern = _@arg",
+                    [{pattern, Pattern}, {arg, Arg}])
+    end,
+    [MatchExpr(Arg) || Arg <- Args, not is_cut_variable(Arg)].
 
 cute_variables(Matches) ->
-    ExtractPattern = fun (Match) ->
-        ?Q("_@Pattern = _@_") = Match,
-        Pattern
-    end,
-    [ExtractPattern(Match) || Match <- Matches].
+    lists:map(
+      fun (Match) -> ?Q("_@Pattern = _@_") = Match, Pattern end,
+      Matches).
 
 cute_arguments([], [], []) ->
     [];
