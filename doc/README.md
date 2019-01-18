@@ -17,7 +17,7 @@ This is an Erlang parse transform for partial function application, in the
 spirit of [Scheme's
 SRFI-26](https://srfi.schemers.org/srfi-26/srfi-26.md).
 
-It enable the use of cuts to create anonymous functions with _some_
+It enables the use of cuts to create anonymous functions with _some_
 arguments applied. For instance:
 
 ```
@@ -57,6 +57,56 @@ this library to your application:
 ```
 
 -compile({parse_transform, partial}).
+```
+
+
+### Details ###
+
+The transformations are implemented as a replacement of the marker functions
+with fun expressions. Only direct literal calls to the marker functions are
+found by the parse transform. Indirect calls, as Module:Function(...) or via
+erlang:apply/3 are not detected or rewritten and will result in a run time
+exception.
+
+An underscore can only be used as a literal argument to the function to show
+where unevaluated arguments will be inserted. The result of either transform
+is _always_ a fun expression, even when no unevaluated arguments are
+found.
+
+partial:cut/1 is implemented as a transformation from:
+
+```
+
+Fun = partial:cut(some_fun(X, Y, _)).
+```
+
+To:
+
+```
+
+Fun = fun (Arg1) ->
+	some_fun(X, Y, Arg1)
+end.
+```
+
+partial:cute/1 is implemented as a transformation from:
+
+```
+
+Fun = partial:cute(some_fun(X, Y, _)).
+```
+
+To:
+
+```
+
+Fun = (fun () ->
+	Arg1 = X,
+	Arg2 = Y,
+	fun (Arg3) ->
+		some_fun(Arg1, Arg2, Arg3)
+	end
+end)().
 ```
 
 

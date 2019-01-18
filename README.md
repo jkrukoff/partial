@@ -2,11 +2,12 @@
 
 ![Not actually curry.](doc/curry.jpg)
 
+
 ### Overview ###
 
 This is an Erlang parse transform for partial function application, in the
 spirit of [Scheme's
-SRFI-26](https://srfi.schemers.org/srfi-26/srfi-26.md).
+SRFI-26](https://srfi.schemers.org/srfi-26/srfi-26.html).
 
 It enables the use of cuts to create anonymous functions with _some_
 arguments applied. For instance:
@@ -46,6 +47,52 @@ this library to your application:
 ```
 
 
+### Details ###
+
+The transformations are implemented as a replacement of the marker functions
+with fun expressions. Only direct literal calls to the marker functions are
+found by the parse transform. Indirect calls, as Module:Function(...) or via
+erlang:apply/3 are not detected or rewritten and will result in a run time
+exception.
+
+An underscore can only be used as a literal argument to the function to show
+where unevaluated arguments will be inserted. The result of either transform
+is _always_ a fun expression, even when no unevaluated arguments are
+found.
+
+partial:cut/1 is implemented as a transformation from:
+
+```
+Fun = partial:cut(some_fun(X, Y, _)).
+```
+
+To:
+
+```
+Fun = fun (Arg1) ->
+	some_fun(X, Y, Arg1)
+end.
+```
+
+partial:cute/1 is implemented as a transformation from:
+
+```
+Fun = partial:cute(some_fun(X, Y, _)).
+```
+
+To:
+
+```
+Fun = (fun () ->
+	Arg1 = X,
+	Arg2 = Y,
+	fun (Arg3) ->
+		some_fun(Arg1, Arg2, Arg3)
+	end
+end)().
+```
+
+
 ### Contributing ###
 
 Please fork the repo and submit a PR. Tests are run via:
@@ -70,21 +117,21 @@ The application has only been tested with Erlang/OTP 21 on Windows 10. Reports
 of success (or failure!) on other versions and operating systems are
 appreciated.
 
-
 ### Lineage ###
 
 The most common syntactical element I miss in Erlang is the ability to easily
 do partial function application. While researching existing solutions in
-Erlang I came across this [erlando issue](https://github.com/rabbitmq/erlando/issues/2) from
-2011, which I thought had some pretty good ideas. Notably, I wanted the
-ability to use a marker function to make use of the transform explicit and I
-wanted to severly limit the scope of where cuts could be used in order to
-simplify reasoning about them. As such, it's reasonable to think of this
-module as a less powerful version of erlando's cut parse_transform.
+Erlang I came across this [erlando
+issue](https://github.com/rabbitmq/erlando/issues/2) from 2011, which I
+thought had some pretty good ideas. Notably, I wanted the ability to use a
+marker function to make use of the transform explicit and I wanted to severly
+limit the scope of where cuts could be used in order to simplify reasoning
+about them. As such, it's reasonable to think of this module as a less
+powerful version of erlando's cut parse_transform.
 
 The [datum
-library](https://github.com/fogfish/datum/blob/master/src/partial.erl) also contains a similar parse transform, which was used for
-reference.
+library](https://github.com/fogfish/datum/blob/master/src/partial.erl) also
+contains a similar parse transform, which was used for reference.
 
 
 ### Attribution ###
@@ -95,7 +142,6 @@ CC BY-SA 4.0 [`https://creativecommons.org/licenses/by-sa/4.0`](https://creative
 
 
 ## Modules ##
-
 
 <table width="100%" border="0" summary="list of modules">
 <tr><td><a href="http://github.com/jkrukoff/partial/blob/master/doc/partial.md" class="module">partial</a></td></tr></table>

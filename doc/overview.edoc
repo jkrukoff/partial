@@ -47,6 +47,51 @@ this library to your application:
 -compile({parse_transform, partial}).
 '''
 
+<h3>Details</h3>
+
+The transformations are implemented as a replacement of the marker functions
+with fun expressions. Only direct literal calls to the marker functions are
+found by the parse transform. Indirect calls, as Module:Function(...) or via
+erlang:apply/3 are not detected or rewritten and will result in a run time
+exception.
+
+An underscore can only be used as a literal argument to the function to show
+where unevaluated arguments will be inserted. The result of either transform
+is <em>always</em> a fun expression, even when no unevaluated arguments are
+found.
+
+partial:cut/1 is implemented as a transformation from:
+
+```
+Fun = partial:cut(some_fun(X, Y, _)).
+'''
+
+To:
+
+```
+Fun = fun (Arg1) ->
+	some_fun(X, Y, Arg1)
+end.
+'''
+
+partial:cute/1 is implemented as a transformation from:
+
+```
+Fun = partial:cute(some_fun(X, Y, _)).
+'''
+
+To:
+
+```
+Fun = (fun () ->
+	Arg1 = X,
+	Arg2 = Y,
+	fun (Arg3) ->
+		some_fun(Arg1, Arg2, Arg3)
+	end
+end)().
+'''
+
 <h3>Contributing</h3>
 
 Please fork the repo and submit a PR. Tests are run via:
