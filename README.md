@@ -8,7 +8,7 @@ This is an Erlang parse transform for partial function application, in the
 spirit of [Scheme's
 SRFI-26](https://srfi.schemers.org/srfi-26/srfi-26.md).
 
-It enable the use of cuts to create anonymous functions with _some_
+It enables the use of cuts to create anonymous functions with _some_
 arguments applied. For instance:
 
 ```

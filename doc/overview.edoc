@@ -10,7 +10,7 @@ This is an Erlang parse transform for partial function application, in the
 spirit of <a href="https://srfi.schemers.org/srfi-26/srfi-26.html">Scheme's
 SRFI-26</a>.
 
-It enable the use of cuts to create anonymous functions with <em>some</em>
+It enables the use of cuts to create anonymous functions with <em>some</em>
 arguments applied. For instance:
 
 ```
