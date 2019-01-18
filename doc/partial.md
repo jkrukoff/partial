@@ -5,7 +5,7 @@
 * [Function Index](#index)
 * [Function Details](#functions)
 
-.
+A parse transform implementing partial function application.
 
 <a name="index"></a>
 
