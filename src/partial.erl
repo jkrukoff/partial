@@ -5,9 +5,9 @@
 %%%-------------------------------------------------------------------
 -module(partial).
 
-% -define(DEBUG_PARSE_TRANSFORM, true).
+% -define(PARTIAL_DEBUG, true).
 
--ifdef(DEBUG_PARSE_TRANSFORM).
+-ifdef(PARTIAL_DEBUG).
 -define(IF_DEBUG(Expression), Expression).
 -else.
 -define(IF_DEBUG(Expression), (ok)).
