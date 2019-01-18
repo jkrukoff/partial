@@ -28,38 +28,49 @@
 %%%===================================================================
 
 %% @doc
-%% A dummy function used as a marker by parse_transform/2 to convert:
-%% 
-%% F = partial:cut(f(_, x, y, z)).
+%% A dummy function used as a marker by parse_transform/2 to convert
+%% calls to functions to partially applied functions. The special
+%% variable '_' is used as a marker for unevaluated arguments, as it
+%% is usually illegal to use on the right hand side of a match.
 %%
-%% into:
+%% All arguments are evaluated when the partially applied function is
+%% called.
 %%
-%% F = fun (Arg1) ->
-%%     f(Arg1, x, y, z)
-%% end.
+%% The parse transform is only able to detect and rewrite simple
+%% literal calls to this function. Other uses will result in an error
+%% being thrown at runtime.
 %% @end
+%% @see parse_transform/2
 cut(_Fun) ->
     missing_parse_transform().
 
 %% @doc
-%% A dummy function used as a marker by parse_transform/2 to convert:
-%% 
-%% F = partial:cute(f(_, x, y, z)).
+%% A dummy function used as a marker by parse_transform/2 to convert
+%% calls to functions to partially applied functions. The special
+%% variable '_' is used as a marker for unevaluated arguments, as it
+%% is usually illegal to use on the right hand side of a match.
 %%
-%% into:
+%% Given arguments are evaluated when the partially applied function
+%% is constructed. This can be used as an easy way to cache expensive
+%% computation in a closure.
 %%
-%% F = (fun () ->
-%%      Arg2 = x,
-%%      Arg3 = y,
-%%      Arg4 = z,
-%%      fun (Arg1) ->
-%%          f(Arg1, Arg2, Arg3, Arg4)
-%%      end
-%% end)().
+%% The parse transform is only able to detect and rewrite simple
+%% literal calls to this function. Other uses will result in an error
+%% being thrown at runtime.
 %% @end
+%% @see parse_transform/2
 cute(_Fun) ->
     missing_parse_transform().
 
+%% @doc
+%% A parse transformation function which converts calls to special
+%% dummy functions in this module.
+%%
+%% Add:
+%% -compile({parse_transform, partial}).
+%%
+%% to the top of any module to enable.
+%% @end
 parse_transform(Forms, _Options) ->
     transform_forms(Forms).
 
@@ -78,7 +89,7 @@ missing_parse_transform() ->
 
 transform_forms(Forms) ->
     % If any errors occured, we replace the entire form with them.
-    % This allows the standard compiler chaing to pick them up as if
+    % This allows the standard compiler chain to pick them up as if
     % they were erl_parse errors and display a standard error message
     % to the user instead of a traceback.
     erl_syntax:revert_forms(
@@ -95,20 +106,20 @@ transform(Form, Errors) ->
     Transformed = case Form of
         ?Q("partial:cut(_@@Args)") ->
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 Cut Args ~p~n",
+                             "partial:parse_transform/2 cut Args ~p~n",
                              [Args])),
             Cut = cut_function(Line, Args),
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 Cut Transform ~p~n",
+                             "partial:parse_transform/2 cut Transform ~p~n",
                              [Cut])),
             Cut;
         ?Q("partial:cute(_@@Args)") ->
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 Cute Args ~p~n",
+                             "partial:parse_transform/2 cute Args ~p~n",
                              [Args])),
             Cute = cute_function(Line, Args),
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 Cute Transform ~p~n",
+                             "partial:parse_transform/2 cute Transform ~p~n",
                              [Cute])),
             Cute;
         _ ->
@@ -128,6 +139,17 @@ transform_error(Line, Message) ->
     Prefix = "Error: In partial:parse_transform/2, ",
     {error, erl_syntax:error_marker({Line, erl_parse, Prefix ++ Message})}.
 
+%% @doc
+%% Transform the AST for:
+%% 
+%% F = partial:cut(f(_, x, y, z)).
+%%
+%% into:
+%%
+%% F = fun (Arg1) ->
+%%     f(Arg1, x, y, z)
+%% end.
+%% @end
 cut_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->
@@ -154,6 +176,22 @@ cut_function(MarkerLine, MarkerArguments) ->
         "partial:cut/1 requires a single argument, got ~b",
         [length(MarkerArguments)])).
 
+%% @doc
+%% Transform the AST for:
+%% 
+%% F = partial:cute(f(_, x, y, z)).
+%%
+%% into:
+%%
+%% F = (fun () ->
+%%      Arg2 = x,
+%%      Arg3 = y,
+%%      Arg4 = z,
+%%      fun (Arg1) ->
+%%          f(Arg1, Arg2, Arg3, Arg4)
+%%      end
+%% end)().
+%% @end
 cute_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->

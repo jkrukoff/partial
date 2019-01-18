@@ -1,8 +1,17 @@
-# partial #
 
-![Not actually curry.](doc/curry.jpg)
+
+# partial #
+
+Copyright (c) 2018 John Krukoff
+
+__Version:__ 1.0.0
+
+__Authors:__ John Krukoff ([`github@cultist.org`](mailto:github@cultist.org)).
+
 
 ### Overview ###
+
+![Not actually curry.](curry.jpg)
 
 This is an Erlang parse transform for partial function application, in the
 spirit of [Scheme's
@@ -105,5 +114,5 @@ CC BY-SA 4.0 [`https://creativecommons.org/licenses/by-sa/4.0`](https://creative
 
 
 <table width="100%" border="0" summary="list of modules">
-<tr><td><a href="http://github.com/jkrukoff/partial/blob/master/doc/partial.md" class="module">partial</a></td></tr></table>
+<tr><td><a href="partial.md" class="module">partial</a></td></tr></table>
 
