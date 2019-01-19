@@ -4,9 +4,9 @@
   {applications, [kernel,
                   stdlib,
                   syntax_tools]},
-  {maintainers, ["John Krukoff"]},
   {modules, [partial]},
   {registered, []},
   {env, []},
   {licenses, ["Apache 2.0"]},
-  {links, [{"GitHub", "https://github.com/jkrukoff/partial"}]}]}.
+  {links, [{"GitHub", "https://github.com/jkrukoff/partial"}]},
+  {extra, [{maintainers, ["John Krukoff"]}]}]}.
