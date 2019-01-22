@@ -7,6 +7,10 @@
 
 -compile({parse_transform, partial}).
 
+-export([dummy/0,
+         dummy/1,
+         dummy/3]).
+
 -include_lib("eunit/include/eunit.hrl").
 
 %%%===================================================================
@@ -61,6 +65,14 @@ cut_with_all_cuts_test() ->
     Partial = partial:cut(dummy(_, _, _)),
     ?assertEqual({1, 2, 3}, Partial(1, 2, 3)).
 
+cut_function_name_test() ->
+    Partial = partial:cut(_(1, 2, 3)),
+    ?assertEqual({1, 2, 3}, Partial(fun dummy/3)).
+
+cut_module_function_name_test() ->
+    Partial = partial:cut(_:_(1, 2, 3)),
+    ?assertEqual({1, 2, 3}, Partial(test_partial, dummy)).
+
 cut_test() ->
     Partial = partial:cut(dummy(1, _, 3)),
     ?assertEqual({1, 2, 3}, Partial(2)).
@@ -87,6 +99,14 @@ cute_capture_test() ->
 cute_with_all_cuts_test() ->
     Partial = partial:cute(dummy(_, _, _)),
     ?assertEqual({1, 2, 3}, Partial(1, 2, 3)).
+
+cute_function_name_test() ->
+    Partial = partial:cute(_(1, 2, 3)),
+    ?assertEqual({1, 2, 3}, Partial(fun dummy/3)).
+
+cute_module_function_name_test() ->
+    Partial = partial:cute(_:_(1, 2, 3)),
+    ?assertEqual({1, 2, 3}, Partial(test_partial, dummy)).
 
 cute_test() ->
     Partial = partial:cute(dummy(1, _, 3)),

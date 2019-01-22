@@ -13,13 +13,13 @@
 -define(IF_DEBUG(Expression), (ok)).
 -endif.
 
--define(MATCH_REMOTE(Module, Name),
-        {remote, _, {atom, _, Module}, {atom, _, Name}}).
-
 %% API
 -export([cut/1,
          cute/1,
          parse_transform/2]).
+
+-record(cut, {variables=[], arguments=[]}).
+-record(cute, {variables=[], matches=[], arguments=[]}).
 
 -include_lib("syntax_tools/include/merl.hrl").
 
@@ -106,20 +106,20 @@ transform(Form, Errors) ->
     Transformed = case Form of
         ?Q("partial:cut(_@@Args)") ->
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cut Args ~p~n",
+                             "partial:parse_transform/2 cut Args:~n~p~n",
                              [Args])),
             Cut = cut_function(Line, Args),
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cut Transform ~p~n",
+                             "partial:parse_transform/2 cut Transform:~n~p~n",
                              [Cut])),
             Cut;
         ?Q("partial:cute(_@@Args)") ->
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cute Args ~p~n",
+                             "partial:parse_transform/2 cute Args:~n~p~n",
                              [Args])),
             Cute = cute_function(Line, Args),
             ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cute Transform ~p~n",
+                             "partial:parse_transform/2 cute Transform:~n~p~n",
                              [Cute])),
             Cute;
         _ ->
@@ -139,6 +139,93 @@ transform_error(Line, Message) ->
     Prefix = "Error: In partial:parse_transform/2, ",
     {error, erl_syntax:error_marker({Line, erl_parse, Prefix ++ Message})}.
 
+reverse(#cut{} = Cut) ->
+    #cut{variables=lists:reverse(Cut#cut.variables),
+         arguments=lists:reverse(Cut#cut.arguments)};
+reverse(#cute{} = Cute) ->
+    #cute{variables=lists:reverse(Cute#cute.variables),
+          matches=lists:reverse(Cute#cute.matches),
+          arguments=lists:reverse(Cute#cute.arguments)}.
+
+is_cut_variable(Var) ->
+    case Var of
+        ?Q("_") ->
+            true;
+        _ ->
+            false
+    end.
+
+variable_name(Type) ->
+    Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
+    erlang:list_to_atom(lists:flatten(Name)).
+
+variable(Line, Type) ->
+    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Line).
+
+name([Name]) ->
+    [Name];
+name([Module, Function]) ->
+    ?Q("_@Module:_@Function").
+
+split_name(Name) ->
+    case Name of
+        ?Q("_@Module:_@Function") ->
+            [Module, Function];
+        _ ->
+            [Name]
+    end.
+
+match(Line, Type, Form) ->
+    Pattern = variable(Line, Type),
+    Match = merl:qquote(Line,
+                        "_@pattern = _@form",
+                        [{pattern, Pattern}, {form, Form}]),
+    {Pattern, Match}.
+
+cuts(Line, Type, Forms) ->
+    reverse(lists:foldl(
+      fun (Form, #cut{} = Acc) ->
+          case is_cut_variable(Form) of
+              true ->
+                  Variable = variable(Line, Type),
+                  Acc#cut{variables=[Variable | Acc#cut.variables],
+                          arguments=[Variable | Acc#cut.arguments]};
+              false ->
+                  Acc#cut{arguments=[Form | Acc#cut.arguments]}
+          end
+      end,
+      #cut{},
+      Forms)).
+
+name_cuts(Line, Name) ->
+    Parts = split_name(Name),
+    Cut = cuts(Line, name, Parts),
+    Cut#cut{arguments=name(Cut#cut.arguments)}.
+
+cutes(Line, Type, Forms) ->
+    reverse(lists:foldl(
+      fun (Form, #cute{} = Acc) ->
+          case {is_cut_variable(Form), erl_syntax:is_literal(Form)} of
+              {true, false} ->
+                  Variable = variable(Line, Type),
+                  Acc#cute{variables=[Variable | Acc#cute.variables],
+                           arguments=[Variable | Acc#cute.arguments]};
+              {false, true} ->
+                  Acc#cute{arguments=[Form | Acc#cute.arguments]};
+              {false, false} ->
+                  {Variable, Match} = match(Line, Type, Form),
+                  Acc#cute{matches=[Match | Acc#cute.matches],
+                           arguments=[Variable | Acc#cute.arguments]}
+          end
+      end,
+      #cute{},
+      Forms)).
+
+name_cutes(Line, Name) ->
+    Parts = split_name(Name),
+    Cute = cutes(Line, name, Parts),
+    Cute#cute{arguments=name(Cute#cute.arguments)}.
+
 %% @doc
 %% Transform the AST for:
 %% 
@@ -154,15 +241,15 @@ cut_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->
             Line = erl_syntax:get_pos(MarkerArgument),
-            CutVariables = cut_variables(Line, Args),
-            CutArguments = cut_arguments(Args, CutVariables),
+            NameCut = name_cuts(Line, Name),
+            Cut = cuts(Line, cut, Args),
             CutFun = merl:qquote(Line,
                                  "fun (_@@variables) ->"
                                  " _@name(_@@arguments)"
                                  " end",
-                                 [{variables, CutVariables},
-                                  {name, Name},
-                                  {arguments, CutArguments}]),
+                                 [{variables, NameCut#cut.variables ++ Cut#cut.variables},
+                                  {name, NameCut#cut.arguments},
+                                  {arguments, Cut#cut.arguments}]),
             {ok, CutFun};
         _ ->
             transform_error(
@@ -196,19 +283,17 @@ cute_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->
             Line = erl_syntax:get_pos(MarkerArgument),
-            CutVariables = cut_variables(Line, Args),
-            CuteMatches = cute_matches(Line, Args),
-            CuteVariables = cute_variables(CuteMatches),
-            CuteArguments = cute_arguments(Args, CutVariables, CuteVariables),
+            NameCute = name_cutes(Line, Name),
+            Cute = cutes(Line, cute, Args),
             CuteFun = merl:qquote(Line,
                                   "(fun () ->"
                                   " _@@matches,"
                                   " fun (_@@variables) -> _@name(_@@arguments) end"
                                   " end)()",
-                                  [{matches, CuteMatches},
-                                   {variables, CutVariables},
-                                   {name, Name},
-                                   {arguments, CuteArguments}]),
+                                  [{matches, NameCute#cute.matches ++ Cute#cute.matches},
+                                   {variables, NameCute#cute.variables ++ Cute#cute.variables},
+                                   {name, NameCute#cute.arguments},
+                                   {arguments, Cute#cute.arguments}]),
             {ok, CuteFun};
         _ ->
             transform_error(
@@ -221,59 +306,3 @@ cute_function(MarkerLine, MarkerArguments)->
       io_lib:format(
         "partial:cute/1 requires a single argument, got ~b",
         [length(MarkerArguments)])).
-
-is_cut_variable(Var) ->
-    case Var of
-        ?Q("_") ->
-            true;
-        _ ->
-            false
-    end.
-
-variable_name(Type) ->
-    Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
-    erlang:list_to_atom(lists:flatten(Name)).
-
-variable(Line, Type) ->
-    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Line).
-
-cut_variables(Line, Args) ->
-    [variable(Line, cut) || Arg <- Args, is_cut_variable(Arg)].
-
-cut_arguments([], []) ->
-    [];
-cut_arguments([Arg | Args], Variables) ->
-    case is_cut_variable(Arg) of
-        true ->
-            [hd(Variables) | cut_arguments(Args, tl(Variables))];
-        false ->
-            [Arg | cut_arguments(Args, Variables)]
-    end.
-
-cute_matches(Line, Args) ->
-    MatchExpr = fun (Arg) -> 
-        Pattern = variable(Line, cute),
-        merl:qquote(Line,
-                    "_@pattern = _@arg",
-                    [{pattern, Pattern}, {arg, Arg}])
-    end,
-    [MatchExpr(Arg) || Arg <- Args, not is_cut_variable(Arg)].
-
-cute_variables(Matches) ->
-    lists:map(
-      fun (Match) -> ?Q("_@Pattern = _@_") = Match, Pattern end,
-      Matches).
-
-cute_arguments([], [], []) ->
-    [];
-cute_arguments([Arg | Args], CutVariables, CuteVariables) ->
-    case is_cut_variable(Arg) of
-        true ->
-            [hd(CutVariables) | cute_arguments(Args,
-                                               tl(CutVariables),
-                                               CuteVariables)];
-        false ->
-            [hd(CuteVariables) | cute_arguments(Args,
-                                                CutVariables,
-                                                tl(CuteVariables))]
-    end.
