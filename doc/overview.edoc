@@ -82,9 +82,10 @@ with functions with side effects. For instance, when we try and read a value
 from the process dictionary with get/1.
 
 ```
+> Identity = fun (X) -> X end,
 > put(example, 1),
-> Cut = partial:cut(get(example)),
-> Cute = partial:cute(get(example)),
+> Cut = partial:cut(Identity(get(example))),
+> Cute = partial:cute(Identity(get(example))),
 > Cut().
 1
 > Cute().
