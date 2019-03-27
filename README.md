@@ -25,7 +25,7 @@ convert to a hexadecimal string:
 ## Modules ##
 
 <table width="100%" border="0" summary="list of modules">
-<tr><td><a href="http://github.com/jkrukoff/partial/blob/compiler-flags/doc/partial.md" class="module">partial</a></td></tr></table>
+<tr><td><a href="http://github.com/jkrukoff/partial/blob/master/doc/partial.md" class="module">partial</a></td></tr></table>
 
 
 ### Getting Started ###
