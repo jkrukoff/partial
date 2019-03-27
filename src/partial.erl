@@ -56,9 +56,9 @@
 %%%===================================================================
 
 %% @doc
-%% A dummy function used as a marker by parse_transform/2 to convert
+%% A dummy function used as a marker by `parse_transform/2' to convert
 %% calls to functions to partially applied functions. The special
-%% variable '_' is used as a marker for unevaluated arguments, as it
+%% variable `_' is used as a marker for unevaluated arguments, as it
 %% is usually illegal to use on the right hand side of a match.
 %%
 %% All arguments are evaluated when the partially applied function is
@@ -73,9 +73,9 @@ cut(_Fun) ->
     missing_parse_transform().
 
 %% @doc
-%% A dummy function used as a marker by parse_transform/2 to convert
+%% A dummy function used as a marker by `parse_transform/2' to convert
 %% calls to functions to partially applied functions. The special
-%% variable '_' is used as a marker for unevaluated arguments, as it
+%% variable `_' is used as a marker for unevaluated arguments, as it
 %% is usually illegal to use on the right hand side of a match.
 %%
 %% Given arguments are evaluated when the partially applied function
@@ -94,10 +94,13 @@ cute(_Fun) ->
 %% A parse transformation function which converts calls to special
 %% dummy functions in this module.
 %%
-%% Add:
+%% Add this compile attribute to the top of any module to enable:
+%% ```
 %% -compile({parse_transform, partial}).
+%% '''
 %%
-%% to the top of any module to enable.
+%% Or globally enable by adding as a compiler flag (probably in your
+%% rebar.config file).
 %% @end
 -spec parse_transform(Forms, Options) -> NewForms when
       Forms :: [erl_parse:abstract_form() | erl_parse:form_info()],
