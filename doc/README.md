@@ -4,7 +4,7 @@
 
 Copyright (c) 2018 John Krukoff
 
-__Version:__ 1.0.0
+__Version:__ 1.2.0
 
 __Authors:__ John Krukoff ([`github@cultist.org`](mailto:github@cultist.org)).
 
@@ -17,7 +17,7 @@ This is an Erlang parse transform for partial function application, in the
 spirit of [Scheme's
 SRFI-26](https://srfi.schemers.org/srfi-26/srfi-26.md).
 
-It enables the use of cuts, as represented by the special variable "_",  to
+It enables the use of cuts, as represented by the special variable `_`,  to
 create anonymous functions with _some_ arguments applied.
 
 For example, to create a function which takes a single integer argument to
@@ -28,6 +28,17 @@ convert to a hexadecimal string:
 > Hex = partial:cut(integer_to_list(_, 16)),
 > Hex(255).
 "FF"
+```
+
+
+### Getting Started ###
+
+This library is published to [hex.pm](https://hex.pm) as [partial](https://hex.pm/packages/partial). If you're using [rebar3](https://www.rebar3.org/) as your build tool, it can be added
+as a dependency to your rebar.config as follows:
+
+```
+
+{deps, [{partial}]}.
 ```
 
 To use this parse transform, add the following to the top of any module after adding
@@ -60,7 +71,7 @@ once, when the partial function is constructed.
 
 #### Cuts ####
 
-Cuts are represented by the special variable "_". As this variable is usually
+Cuts are represented by the special variable `_`. As this variable is usually
 only legal on the left hand side of a match expression, this use should not
 conflict with any existing Erlang syntax.
 
@@ -85,15 +96,16 @@ For instance, to double the items in a list:
 [2, 4, 6]
 ```
 
-The difference between partial:cut and partial:cute can be seen when dealing
-with functions with side effects. For instance, when we try and read a value
-from the process dictionary with get/1.
+The difference between `partial:cut/1` and `partial:cute/1` can be seen when
+dealing with functions with side effects. For instance, when we try and read a
+value from the process dictionary with `get/1`.
 
 ```
 
+> Identity = fun (X) -> X end,
 > put(example, 1),
-> Cut = partial:cut(get(example)),
-> Cute = partial:cute(get(example)),
+> Cut = partial:cut(Identity(get(example))),
+> Cute = partial:cute(Identity(get(example))),
 > Cut().
 1
 > Cute().
@@ -105,7 +117,7 @@ from the process dictionary with get/1.
 1
 ```
 
-This also makes partial:cute an easy way to cache expensive computation and
+This also makes `partial:cute/1` an easy way to cache expensive computation and
 reuse it in later calls.
 
 Finally, partial evaluation can make creating pipelines across multiple
@@ -122,6 +134,20 @@ functions easier:
 ```
 
 
+#### Options ####
+
+The parse transform supports a single option: `partial_allow_local`. This
+option allows for a bare `cut/1` or `cute/1` call to be treated the same as
+the fully qualified `partial:cut/1` or `partial:cute/1` call.
+
+To enable, either pass as a compiler flag or specify as a compile attribute:
+
+```
+
+-compile(partial_allow_local).
+```
+
+
 ### Implementation ###
 
 The transformations are implemented as a replacement of the marker functions
@@ -131,7 +157,7 @@ erlang:apply/3 are not detected or rewritten and will result in a run time
 exception. The result of either transform is _always_ a fun
 expression, even when no unevaluated arguments are found.
 
-The underscore variable "_" is used as a placeholder for unevaluated
+The underscore variable `_` is used as a placeholder for unevaluated
 arguments. It is only legal as a standalone expression, as either the function
 name to call or as an argument. Unevaluated arguments are converted to
 arguments of the created fun in strict left to right order. There is no
@@ -153,7 +179,7 @@ Fun = fun (Arg1) ->
 end.
 ```
 
-partial:cute/1 is implemented as a transformation from:
+`partial:cute/1` is implemented as a transformation from:
 
 ```
 

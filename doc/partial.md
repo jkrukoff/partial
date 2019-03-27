@@ -7,7 +7,35 @@
 
 A parse transform implementing partial function application.
 
-<a name="index"></a>
+<a name="description"></a>
+
+## Description ##
+
+To enable, add to the top of your module:
+
+```
+   -compile({parse_transform, partial}).
+```
+
+This will enable compile time conversion of calls to
+`partial:cut/1` and `partial:cute/1` into partial function
+application of the contained function. `_` is used as a marker for
+the unevaluated slot(s) in the contained function.
+
+With `partial:cut/1`, the arguments to the called function are
+evaluated when the returned function is applied. With
+`partial:cute/1`, the arguments are evaluated when the function is
+constructed.
+
+Additionally, a compile option can be specified via erlc options
+or by adding to the top of your module:
+
+```
+   -compile(partial_allow_local).
+```
+
+To enable transforming `cut/1` and `cute/1` the same as the fully
+qualified names.<a name="index"></a>
 
 ## Function Index ##
 
@@ -70,7 +98,11 @@ __See also:__ [parse_transform/2](#parse_transform-2).
 
 ### parse_transform/2 ###
 
-`parse_transform(Forms, Options) -> any()`
+<pre><code>
+parse_transform(Forms, Options) -&gt; NewForms
+</code></pre>
+
+<ul class="definitions"><li><code>Forms = [<a href="erl_parse.md#type-abstract_form">erl_parse:abstract_form()</a> | <a href="erl_parse.md#type-form_info">erl_parse:form_info()</a>]</code></li><li><code>Options = [<a href="compile.md#type-option">compile:option()</a>]</code></li><li><code>NewForms = [<a href="erl_parse.md#type-abstract_form">erl_parse:abstract_form()</a> | <a href="erl_parse.md#type-form_info">erl_parse:form_info()</a>]</code></li></ul>
 
 A parse transformation function which converts calls to special
 dummy functions in this module.
