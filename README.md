@@ -68,7 +68,7 @@ once, when the partial function is constructed.
 
 #### Cuts ####
 
-Cuts are represented by the special variable `_'. As this variable is usually
+Cuts are represented by the special variable `_`. As this variable is usually
 only legal on the left hand side of a match expression, this use should not
 conflict with any existing Erlang syntax.
 
@@ -148,17 +148,17 @@ To enable, either pass as a compiler flag or specify as a compile attribute:
 The transformations are implemented as a replacement of the marker functions
 with fun expressions. Only direct literal calls to the marker functions are
 found by the parse transform. Indirect calls, as Module:Function(...) or via
-erlang:apply/3 are not detected or rewritten and will result in a run time
-exception. The result of either transform is _always_ a fun
-expression, even when no unevaluated arguments are found.
+`erlang:apply/3` are not detected or rewritten and will result in a run time
+exception. The result of either transform is _always_ a fun expression, even
+when no unevaluated arguments are found.
 
-The underscore variable `_' is used as a placeholder for unevaluated
+The underscore variable `_` is used as a placeholder for unevaluated
 arguments. It is only legal as a standalone expression, as either the function
 name to call or as an argument. Unevaluated arguments are converted to
 arguments of the created fun in strict left to right order. There is no
 support for reordering or duplicating unevaluated arguments.
 
-partial:cut/1 is implemented as a transformation from:
+`partial:cut/1` is implemented as a transformation from:
 
 ```
 Fun = partial:cut(some_fun(X, Y, _)).
@@ -207,7 +207,7 @@ rebar3 as markdown edoc
 
 Some effort has been put into using only the erl_syntax (sometimes via merl)
 interfaces to traverse and modify the parse tree. This was done in the hope of
-those interfaces being more stable than the raw format, which is explicitely
+those interfaces being more stable than the raw format, which is explicitly
 not guaranteed by the documentation. Any PR which depends on erl_parse forms
 will be asked to rewrite using erl_syntax forms.
 
@@ -223,10 +223,10 @@ do partial function application. While researching existing solutions in
 Erlang I came across this [erlando
 issue](https://github.com/rabbitmq/erlando/issues/2) from 2011, which I
 thought had some pretty good ideas. Notably, I wanted the ability to use a
-marker function to make use of the transform explicit and I wanted to severly
+marker function to make use of the transform explicit and I wanted to severely
 limit the scope of where cuts could be used in order to simplify reasoning
 about them. As such, it's reasonable to think of this module as a less
-powerful version of erlando's cut parse_transform.
+powerful version of erlando's cut parse transform.
 
 The [datum
 library](https://github.com/fogfish/datum/blob/master/src/partial.erl) also

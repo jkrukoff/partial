@@ -140,9 +140,9 @@ To enable, either pass as a compiler flag or specify as a compile attribute:
 The transformations are implemented as a replacement of the marker functions
 with fun expressions. Only direct literal calls to the marker functions are
 found by the parse transform. Indirect calls, as Module:Function(...) or via
-erlang:apply/3 are not detected or rewritten and will result in a run time
-exception. The result of either transform is <em>always</em> a fun
-expression, even when no unevaluated arguments are found.
+`erlang:apply/3' are not detected or rewritten and will result in a run time
+exception. The result of either transform is <em>always</em> a fun expression,
+even when no unevaluated arguments are found.
 
 The underscore variable `_' is used as a placeholder for unevaluated
 arguments. It is only legal as a standalone expression, as either the function
@@ -150,7 +150,7 @@ name to call or as an argument. Unevaluated arguments are converted to
 arguments of the created fun in strict left to right order. There is no
 support for reordering or duplicating unevaluated arguments.
 
-partial:cut/1 is implemented as a transformation from:
+`partial:cut/1' is implemented as a transformation from:
 
 ```
 Fun = partial:cut(some_fun(X, Y, _)).
