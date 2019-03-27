@@ -198,7 +198,7 @@ rebar3 as markdown edoc
 
 Some effort has been put into using only the erl_syntax (sometimes via merl)
 interfaces to traverse and modify the parse tree. This was done in the hope of
-those interfaces being more stable than the raw format, which is explicitely
+those interfaces being more stable than the raw format, which is explicitly
 not guaranteed by the documentation. Any PR which depends on erl_parse forms
 will be asked to rewrite using erl_syntax forms.
 
@@ -214,7 +214,7 @@ Erlang I came across this <a
 href="https://github.com/rabbitmq/erlando/issues/2">erlando issue</a> from
 2011, which I thought had some pretty good ideas. Notably, I wanted the
 ability to use a marker function to make use of the transform explicit and I
-wanted to severly limit the scope of where cuts could be used in order to
+wanted to severely limit the scope of where cuts could be used in order to
 simplify reasoning about them. As such, it's reasonable to think of this
 module as a less powerful version of erlando's cut parse_transform.
 
