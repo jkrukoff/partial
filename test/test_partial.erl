@@ -1,11 +1,16 @@
 %%%-------------------------------------------------------------------
 %%% @doc
-%%%
+%%% Tests for src/partial.erl
 %%% @end
 %%%-------------------------------------------------------------------
 -module(test_partial).
 
--compile({parse_transform, partial}).
+% This triggers the option error handling and prevents the rest of the
+% test from running.
+% -compile({partial_allow_local, invalid}).
+
+-compile([{parse_transform, partial},
+          partial_allow_local]).
 
 -export([dummy/0,
          dummy/1,
@@ -77,6 +82,10 @@ cut_test() ->
     Partial = partial:cut(dummy(1, _, 3)),
     ?assertEqual({1, 2, 3}, Partial(2)).
 
+cut_local_test() ->
+    Partial = cut(dummy(1, _, 3)),
+    ?assertEqual({1, 2, 3}, Partial(2)).
+
 cute_with_no_args_test() ->
     Partial = partial:cute(dummy()),
     ?assert(Partial()).
@@ -110,4 +119,8 @@ cute_module_function_name_test() ->
 
 cute_test() ->
     Partial = partial:cute(dummy(1, _, 3)),
+    ?assertEqual({1, 2, 3}, Partial(2)).
+
+cute_local_test() ->
+    Partial = cute(dummy(1, _, 3)),
     ?assertEqual({1, 2, 3}, Partial(2)).

@@ -1,6 +1,6 @@
 {application, partial,
  [{description, "Utility library for partial function application."},
-  {vsn, "1.1.0"},
+  {vsn, "1.2.0"},
   {applications, [kernel,
                   stdlib,
                   syntax_tools]},

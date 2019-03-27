@@ -1,10 +1,38 @@
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% A parse transform implementing partial function application.
+%%%
+%%% To enable, add to the top of your module:
+%%%
+%%% ```
+%%% -compile({parse_transform, partial}).
+%%% '''
+%%%
+%%% This will enable compile time conversion of calls to
+%%% `partial:cut/1' and `partial:cute/1' into partial function
+%%% application of the contained function. `_' is used as a marker for
+%%% the unevaluated slot(s) in the contained function.
+%%%
+%%% With `partial:cut/1', the arguments to the called function are
+%%% evaluated when the returned function is applied. With
+%%% `partial:cute/1', the arguments are evaluated when the function is
+%%% constructed.
+%%%
+%%% Additionally, a compile option can be specified via erlc options
+%%% or by adding to the top of your module:
+%%%
+%%% ```
+%%% -compile(partial_allow_local).
+%%% '''
+%%%
+%%% To enable transforming `cut/1' and `cute/1' the same as the fully
+%%% qualified names.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(partial).
 
+% Manually enable debugging. Should usually just use a compiler flag,
+% though. Is quite verbose.
 % -define(PARTIAL_DEBUG, true).
 
 -ifdef(PARTIAL_DEBUG).
@@ -71,8 +99,18 @@ cute(_Fun) ->
 %%
 %% to the top of any module to enable.
 %% @end
-parse_transform(Forms, _Options) ->
-    transform_forms(Forms).
+-spec parse_transform(Forms, Options) -> NewForms when
+      Forms :: [erl_parse:abstract_form() | erl_parse:form_info()],
+      Options :: [compile:option()],
+      NewForms :: [erl_parse:abstract_form() | erl_parse:form_info()].
+parse_transform(Forms, Options) ->
+    GlobalOptions = parse_options(Options),
+    FileOptions = parse_compile_attributes(Forms),
+    MergedOptions = merge_options(GlobalOptions, FileOptions),
+    ?IF_DEBUG(ok = io:format(
+                     "partial:parse_transform/2 options:~n~p~n",
+                     [MergedOptions])),
+    transform_forms(Forms, MergedOptions).
 
 %%%===================================================================
 %%% Internal Functions
@@ -87,44 +125,117 @@ missing_parse_transform() ->
            "indirectly in a way the parse transform can not "
            "recognize, such as via apply/3."}).
 
-transform_forms(Forms) ->
+parse_options(Options) ->
+    ?IF_DEBUG(ok = io:format(
+                     "partial:parse_options/2 options:~n~p~n",
+                     [Options])),
+    AllowLocal = proplists:get_value(partial_allow_local, Options),
+    ok = case lists:member(AllowLocal, [true, false, undefined]) of
+             true ->
+                 ok;
+             false ->
+                 Message = lists:flatten(
+                             io_lib:format(
+                               "Value for compiler option partial_allow_local "
+                               "must be a boolean, but value was: ~w",
+                               [AllowLocal])),
+                 error({invalid_compile_option, Message})
+         end,
+    #{allow_local=>AllowLocal}.
+
+compile_attributes(Forms) ->
+    Attributes = [begin
+                      Attribute = erl_syntax:concrete(Args),
+                      case is_list(Attribute) of
+                          true ->
+                              Attribute;
+                          false ->
+                              [Attribute]
+                      end
+                  end || 
+                  Form <- Forms,
+                  {match, Args} <- [case Form of
+                                        ?Q("-compile('@Args').") ->
+                                            {match, Args};
+                                        _ ->
+                                            undefined
+                                    end]],
+    lists:append(Attributes).
+
+parse_compile_attributes(Forms) ->
+    Attributes = compile_attributes(Forms),
+    parse_options(Attributes).
+
+%% @private
+%% @doc
+%% We parse options from the compiler and from the file being
+%% compiled. If an option is only given in one place, use that. If
+%% given in both places the file overrides the global option.
+%% @end
+-spec merge_options(GlobalOptions, FileOptions) -> Options when
+      GlobalOptions :: #{allow_local:=undefined | boolean()},
+      FileOptions :: #{allow_local:=undefined | boolean()},
+      Options :: #{allow_local:=boolean()}.
+merge_options(#{allow_local:=undefined}, #{allow_local:=undefined}) ->
+    #{allow_local=>false};
+merge_options(#{allow_local:=undefined}, #{allow_local:=true}) ->
+    #{allow_local=>true};
+merge_options(#{allow_local:=undefined}, #{allow_local:=false}) ->
+    #{allow_local=>false};
+merge_options(#{allow_local:=true}, #{allow_local:=undefined}) ->
+    #{allow_local=>true};
+merge_options(#{allow_local:=false}, #{allow_local:=undefined}) ->
+    #{allow_local=>false};
+merge_options(#{allow_local:=true}, #{allow_local:=true}) ->
+    #{allow_local=>true};
+merge_options(#{allow_local:=true}, #{allow_local:=false}) ->
+    #{allow_local=>false};
+merge_options(#{allow_local:=false}, #{allow_local:=true}) ->
+    #{allow_local=>true};
+merge_options(#{allow_local:=false}, #{allow_local:=false}) ->
+    #{allow_local=>false}.
+
+transform_forms(Forms, Options) ->
     % If any errors occured, we replace the entire form with them.
     % This allows the standard compiler chain to pick them up as if
     % they were erl_parse errors and display a standard error message
     % to the user instead of a traceback.
+    Transform = fun (Form, Errors) ->
+                        transform(Form, Errors, Options)
+                end,
     erl_syntax:revert_forms(
       lists:append(
-          [case erl_syntax_lib:mapfold(fun transform/2, [], Form) of
-               {Transformed, []} ->
-                   [Transformed];
-               {_Transformed, Errors} ->
-                   Errors
-           end || Form <- Forms])).
+        [case erl_syntax_lib:mapfold(Transform, [], Form) of
+             {Transformed, []} ->
+                 [Transformed];
+             {_Transformed, Errors} ->
+                 Errors
+         end || Form <- Forms])).
 
-transform(Form, Errors) ->
+transform(Form, Errors, Options) ->
     Line = erl_syntax:get_pos(Form),
     Transformed = case Form of
-        ?Q("partial:cut(_@@Args)") ->
-            ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cut Args:~n~p~n",
-                             [Args])),
-            Cut = cut_function(Line, Args),
-            ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cut Transform:~n~p~n",
-                             [Cut])),
-            Cut;
-        ?Q("partial:cute(_@@Args)") ->
-            ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cute Args:~n~p~n",
-                             [Args])),
-            Cute = cute_function(Line, Args),
-            ?IF_DEBUG(ok = io:format(
-                             "partial:parse_transform/2 cute Transform:~n~p~n",
-                             [Cute])),
-            Cute;
-        _ ->
-            {ok, Form}
-    end,
+                      ?Q("partial:cut(_@@Args)") ->
+                          cut_function(Line, Args);
+                      ?Q("cut(_@@Args)") ->
+                          case Options of
+                              #{allow_local:=true} ->
+                                  cut_function(Line, Args);
+                              _ ->
+                                  {ok, Form}
+                          end;
+                      ?Q("partial:cute(_@@Args)") ->
+                          cute_function(Line, Args);
+                      ?Q("cute(_@@Args)") ->
+                          case Options of
+                              #{allow_local:=true} ->
+                                  cute_function(Line, Args);
+                              _ ->
+                                  {ok, Form}
+                          end;
+                      _ ->
+                          {ok, Form}
+                  end,
     case Transformed of
         {ok, NewForm} ->
             {NewForm, Errors};
@@ -184,18 +295,18 @@ match(Line, Type, Form) ->
 
 cuts(Line, Type, Forms) ->
     reverse(lists:foldl(
-      fun (Form, #cut{} = Acc) ->
-          case is_cut_variable(Form) of
-              true ->
-                  Variable = variable(Line, Type),
-                  Acc#cut{variables=[Variable | Acc#cut.variables],
-                          arguments=[Variable | Acc#cut.arguments]};
-              false ->
-                  Acc#cut{arguments=[Form | Acc#cut.arguments]}
-          end
-      end,
-      #cut{},
-      Forms)).
+              fun (Form, #cut{} = Acc) ->
+                      case is_cut_variable(Form) of
+                          true ->
+                              Variable = variable(Line, Type),
+                              Acc#cut{variables=[Variable | Acc#cut.variables],
+                                      arguments=[Variable | Acc#cut.arguments]};
+                          false ->
+                              Acc#cut{arguments=[Form | Acc#cut.arguments]}
+                      end
+              end,
+              #cut{},
+              Forms)).
 
 name_cuts(Line, Name) ->
     Parts = split_name(Name),
@@ -204,28 +315,29 @@ name_cuts(Line, Name) ->
 
 cutes(Line, Type, Forms) ->
     reverse(lists:foldl(
-      fun (Form, #cute{} = Acc) ->
-          case {is_cut_variable(Form), erl_syntax:is_literal(Form)} of
-              {true, false} ->
-                  Variable = variable(Line, Type),
-                  Acc#cute{variables=[Variable | Acc#cute.variables],
-                           arguments=[Variable | Acc#cute.arguments]};
-              {false, true} ->
-                  Acc#cute{arguments=[Form | Acc#cute.arguments]};
-              {false, false} ->
-                  {Variable, Match} = match(Line, Type, Form),
-                  Acc#cute{matches=[Match | Acc#cute.matches],
-                           arguments=[Variable | Acc#cute.arguments]}
-          end
-      end,
-      #cute{},
-      Forms)).
+              fun (Form, #cute{} = Acc) ->
+                      case {is_cut_variable(Form), erl_syntax:is_literal(Form)} of
+                          {true, false} ->
+                              Variable = variable(Line, Type),
+                              Acc#cute{variables=[Variable | Acc#cute.variables],
+                                       arguments=[Variable | Acc#cute.arguments]};
+                          {false, true} ->
+                              Acc#cute{arguments=[Form | Acc#cute.arguments]};
+                          {false, false} ->
+                              {Variable, Match} = match(Line, Type, Form),
+                              Acc#cute{matches=[Match | Acc#cute.matches],
+                                       arguments=[Variable | Acc#cute.arguments]}
+                      end
+              end,
+              #cute{},
+              Forms)).
 
 name_cutes(Line, Name) ->
     Parts = split_name(Name),
     Cute = cutes(Line, name, Parts),
     Cute#cute{arguments=name(Cute#cute.arguments)}.
 
+%% @private
 %% @doc
 %% Transform the AST for:
 %% 
@@ -240,6 +352,9 @@ name_cutes(Line, Name) ->
 cut_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->
+            ?IF_DEBUG(ok = io:format(
+                             "partial:cut_function/2 Original:~n~p~n",
+                             [MarkerArgument])),
             Line = erl_syntax:get_pos(MarkerArgument),
             NameCut = name_cuts(Line, Name),
             Cut = cuts(Line, cut, Args),
@@ -250,6 +365,9 @@ cut_function(MarkerLine, [MarkerArgument])->
                                  [{variables, NameCut#cut.variables ++ Cut#cut.variables},
                                   {name, NameCut#cut.arguments},
                                   {arguments, Cut#cut.arguments}]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:cut_function/2 Transformed:~n~p~n",
+                             [CutFun])),
             {ok, CutFun};
         _ ->
             transform_error(
@@ -263,6 +381,7 @@ cut_function(MarkerLine, MarkerArguments) ->
         "partial:cut/1 requires a single argument, got ~b",
         [length(MarkerArguments)])).
 
+%% @private
 %% @doc
 %% Transform the AST for:
 %% 
@@ -282,6 +401,9 @@ cut_function(MarkerLine, MarkerArguments) ->
 cute_function(MarkerLine, [MarkerArgument])->
     case MarkerArgument of
         ?Q("_@Name(_@@Args)") ->
+            ?IF_DEBUG(ok = io:format(
+                             "partial:cute_function/2 Original:~n~p~n",
+                             [MarkerArgument])),
             Line = erl_syntax:get_pos(MarkerArgument),
             NameCute = name_cutes(Line, Name),
             Cute = cutes(Line, cute, Args),
@@ -294,6 +416,9 @@ cute_function(MarkerLine, [MarkerArgument])->
                                    {variables, NameCute#cute.variables ++ Cute#cute.variables},
                                    {name, NameCute#cute.arguments},
                                    {arguments, Cute#cute.arguments}]),
+            ?IF_DEBUG(ok = io:format(
+                             "partial:cute_function/2 Transformed:~n~p~n",
+                             [CuteFun])),
             {ok, CuteFun};
         _ ->
             transform_error(

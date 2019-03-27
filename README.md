@@ -2,6 +2,7 @@
 
 ![Not actually curry.](doc/curry.jpg)
 
+
 ### Overview ###
 
 This is an Erlang parse transform for partial function application, in the
@@ -20,10 +21,30 @@ convert to a hexadecimal string:
 "FF"
 ```
 
+
+## Modules ##
+
+<table width="100%" border="0" summary="list of modules">
+<tr><td><a href="http://github.com/jkrukoff/partial/blob/master/doc/partial.md" class="module">partial</a></td></tr></table>
+
+
+### Getting Started ###
+
+This library is published to [hex.pm](https://hex.pm) as
+[partial](https://hex.pm/packages/partial). If you're using
+[rebar3](https://www.rebar3.org/) as your build tool, it can be added as a
+dependency to your rebar.config as follows:
+
+```
+
+{deps, [{partial}]}.
+```
+
 To use this parse transform, add the following to the top of any module after adding
 this library to your application:
 
 ```
+
 -compile({parse_transform, partial}).
 ```
 
@@ -47,7 +68,7 @@ once, when the partial function is constructed.
 
 #### Cuts ####
 
-Cuts are represented by the special variable `_`. As this variable is usually
+Cuts are represented by the special variable `_'. As this variable is usually
 only legal on the left hand side of a match expression, this use should not
 conflict with any existing Erlang syntax.
 
@@ -64,10 +85,7 @@ Rev3(fun lists:reverse/1).
 ```
 
 All, some or none of the arguments to a function may be cuts.
-
-
-#### Examples ####
-
+<h4>Examples</h4>
 Partial evaluation provides an easy way to work with higher order functions.
 For instance, to double the items in a list:
 
@@ -76,9 +94,9 @@ For instance, to double the items in a list:
 [2, 4, 6]
 ```
 
-The difference between partial:cut and partial:cute can be seen when dealing
-with functions with side effects. For instance, when we try and read a value
-from the process dictionary with get/1.
+The difference between `partial:cut/1` and `partial:cute/1` can be seen when
+dealing with functions with side effects. For instance, when we try and read a
+value from the process dictionary with `get/1`.
 
 ```
 > Identity = fun (X) -> X end,
@@ -96,7 +114,7 @@ from the process dictionary with get/1.
 1
 ```
 
-This also makes partial:cute an easy way to cache expensive computation and
+This also makes `partial:cute/1` an easy way to cache expensive computation and
 reuse it in later calls.
 
 Finally, partial evaluation can make creating pipelines across multiple
@@ -112,6 +130,19 @@ functions easier:
 ```
 
 
+#### Options ####
+
+The parse transform supports a single option: `partial_allow_local`. This
+option allows for a bare `cut/1` or `cute/1` call to be treated the same as
+the fully qualified `partial:cut/1` or `partial:cute/1` call.
+
+To enable, either pass as a compiler flag or specify as a compile attribute:
+
+```
+-compile(partial_allow_local).
+```
+
+
 ### Implementation ###
 
 The transformations are implemented as a replacement of the marker functions
@@ -121,7 +152,7 @@ erlang:apply/3 are not detected or rewritten and will result in a run time
 exception. The result of either transform is _always_ a fun
 expression, even when no unevaluated arguments are found.
 
-The underscore variable `_` is used as a placeholder for unevaluated
+The underscore variable `_' is used as a placeholder for unevaluated
 arguments. It is only legal as a standalone expression, as either the function
 name to call or as an argument. Unevaluated arguments are converted to
 arguments of the created fun in strict left to right order. There is no
@@ -141,7 +172,7 @@ Fun = fun (Arg1) ->
 end.
 ```
 
-partial:cute/1 is implemented as a transformation from:
+`partial:cute/1` is implemented as a transformation from:
 
 ```
 Fun = partial:cute(some_fun(X, Y, _)).
@@ -207,10 +238,3 @@ contains a similar parse transform, which was used for reference.
 Image by Cuklev
 
 CC BY-SA 4.0 [`https://creativecommons.org/licenses/by-sa/4.0`](https://creativecommons.org/licenses/by-sa/4.0)
-
-
-## Modules ##
-
-
-<table width="100%" border="0" summary="list of modules">
-<tr><td><a href="http://github.com/jkrukoff/partial/blob/master/doc/partial.md" class="module">partial</a></td></tr></table>
