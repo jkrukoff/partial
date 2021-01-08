@@ -216,7 +216,8 @@ transform_forms(Forms, Options) ->
          end || Form <- Forms])).
 
 transform(Form, Errors, Options) ->
-    Line = erl_syntax:get_pos(Form),
+    Pos = erl_syntax:get_pos(Form),
+    Line = get_line(Pos),
     Transformed = case Form of
                       ?Q("partial:cut(_@@Args)") ->
                           cut_function(Line, Args);
@@ -289,8 +290,9 @@ split_name(Name) ->
             [Name]
     end.
 
-match(Line, Type, Form) ->
-    Pattern = variable(Line, Type),
+match(Pos, Type, Form) ->
+    Pattern = variable(Pos, Type),
+    Line = get_line(Pos),
     Match = merl:qquote(Line,
                         "_@pattern = _@form",
                         [{pattern, Pattern}, {form, Form}]),
@@ -358,9 +360,10 @@ cut_function(MarkerLine, [MarkerArgument])->
             ?IF_DEBUG(ok = io:format(
                              "partial:cut_function/2 Original:~n~p~n",
                              [MarkerArgument])),
-            Line = erl_syntax:get_pos(MarkerArgument),
-            NameCut = name_cuts(Line, Name),
-            Cut = cuts(Line, cut, Args),
+            Pos = erl_syntax:get_pos(MarkerArgument),
+            Line = get_line(Pos),
+            NameCut = name_cuts(Pos, Name),
+            Cut = cuts(Pos, cut, Args),
             CutFun = merl:qquote(Line,
                                  "fun (_@@variables) ->"
                                  " _@name(_@@arguments)"
@@ -407,9 +410,10 @@ cute_function(MarkerLine, [MarkerArgument])->
             ?IF_DEBUG(ok = io:format(
                              "partial:cute_function/2 Original:~n~p~n",
                              [MarkerArgument])),
-            Line = erl_syntax:get_pos(MarkerArgument),
-            NameCute = name_cutes(Line, Name),
-            Cute = cutes(Line, cute, Args),
+            Pos = erl_syntax:get_pos(MarkerArgument),
+            Line = get_line(Pos),
+            NameCute = name_cutes(Pos, Name),
+            Cute = cutes(Pos, cute, Args),
             CuteFun = merl:qquote(Line,
                                   "(fun () ->"
                                   " _@@matches,"
@@ -434,3 +438,11 @@ cute_function(MarkerLine, MarkerArguments)->
       io_lib:format(
         "partial:cute/1 requires a single argument, got ~b",
         [length(MarkerArguments)])).
+
+get_line(Pos) ->
+    case erl_anno:is_anno(Pos) of
+        true ->
+            erl_anno:line(Pos);
+        false ->
+            Pos
+    end.
