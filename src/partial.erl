@@ -274,8 +274,8 @@ variable_name(Type) ->
     Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
     erlang:list_to_atom(lists:flatten(Name)).
 
-variable(Line, Type) ->
-    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Line).
+variable(Pos, Type) ->
+    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Pos).
 
 name([Name]) ->
     [Name];
@@ -298,12 +298,12 @@ match(Pos, Type, Form) ->
                         [{pattern, Pattern}, {form, Form}]),
     {Pattern, Match}.
 
-cuts(Line, Type, Forms) ->
+cuts(Pos, Type, Forms) ->
     reverse(lists:foldl(
               fun (Form, #cut{} = Acc) ->
                       case is_cut_variable(Form) of
                           true ->
-                              Variable = variable(Line, Type),
+                              Variable = variable(Pos, Type),
                               Acc#cut{variables=[Variable | Acc#cut.variables],
                                       arguments=[Variable | Acc#cut.arguments]};
                           false ->
@@ -313,23 +313,23 @@ cuts(Line, Type, Forms) ->
               #cut{},
               Forms)).
 
-name_cuts(Line, Name) ->
+name_cuts(Pos, Name) ->
     Parts = split_name(Name),
-    Cut = cuts(Line, name, Parts),
+    Cut = cuts(Pos, name, Parts),
     Cut#cut{arguments=name(Cut#cut.arguments)}.
 
-cutes(Line, Type, Forms) ->
+cutes(Pos, Type, Forms) ->
     reverse(lists:foldl(
               fun (Form, #cute{} = Acc) ->
                       case {is_cut_variable(Form), erl_syntax:is_literal(Form)} of
                           {true, false} ->
-                              Variable = variable(Line, Type),
+                              Variable = variable(Pos, Type),
                               Acc#cute{variables=[Variable | Acc#cute.variables],
                                        arguments=[Variable | Acc#cute.arguments]};
                           {false, true} ->
                               Acc#cute{arguments=[Form | Acc#cute.arguments]};
                           {false, false} ->
-                              {Variable, Match} = match(Line, Type, Form),
+                              {Variable, Match} = match(Pos, Type, Form),
                               Acc#cute{matches=[Match | Acc#cute.matches],
                                        arguments=[Variable | Acc#cute.arguments]}
                       end
@@ -337,9 +337,9 @@ cutes(Line, Type, Forms) ->
               #cute{},
               Forms)).
 
-name_cutes(Line, Name) ->
+name_cutes(Pos, Name) ->
     Parts = split_name(Name),
-    Cute = cutes(Line, name, Parts),
+    Cute = cutes(Pos, name, Parts),
     Cute#cute{arguments=name(Cute#cute.arguments)}.
 
 %% @private
