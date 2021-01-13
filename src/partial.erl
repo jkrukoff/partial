@@ -216,7 +216,8 @@ transform_forms(Forms, Options) ->
          end || Form <- Forms])).
 
 transform(Form, Errors, Options) ->
-    Line = erl_syntax:get_pos(Form),
+    Pos = erl_syntax:get_pos(Form),
+    Line = get_line(Pos),
     Transformed = case Form of
                       ?Q("partial:cut(_@@Args)") ->
                           cut_function(Line, Args);
@@ -273,8 +274,8 @@ variable_name(Type) ->
     Name = io_lib:format("PartialArgument_~s_~w", [Type, make_ref()]),
     erlang:list_to_atom(lists:flatten(Name)).
 
-variable(Line, Type) ->
-    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Line).
+variable(Pos, Type) ->
+    erl_syntax:set_pos(erl_syntax:variable(variable_name(Type)), Pos).
 
 name([Name]) ->
     [Name];
@@ -289,19 +290,20 @@ split_name(Name) ->
             [Name]
     end.
 
-match(Line, Type, Form) ->
-    Pattern = variable(Line, Type),
+match(Pos, Type, Form) ->
+    Pattern = variable(Pos, Type),
+    Line = get_line(Pos),
     Match = merl:qquote(Line,
                         "_@pattern = _@form",
                         [{pattern, Pattern}, {form, Form}]),
     {Pattern, Match}.
 
-cuts(Line, Type, Forms) ->
+cuts(Pos, Type, Forms) ->
     reverse(lists:foldl(
               fun (Form, #cut{} = Acc) ->
                       case is_cut_variable(Form) of
                           true ->
-                              Variable = variable(Line, Type),
+                              Variable = variable(Pos, Type),
                               Acc#cut{variables=[Variable | Acc#cut.variables],
                                       arguments=[Variable | Acc#cut.arguments]};
                           false ->
@@ -311,23 +313,23 @@ cuts(Line, Type, Forms) ->
               #cut{},
               Forms)).
 
-name_cuts(Line, Name) ->
+name_cuts(Pos, Name) ->
     Parts = split_name(Name),
-    Cut = cuts(Line, name, Parts),
+    Cut = cuts(Pos, name, Parts),
     Cut#cut{arguments=name(Cut#cut.arguments)}.
 
-cutes(Line, Type, Forms) ->
+cutes(Pos, Type, Forms) ->
     reverse(lists:foldl(
               fun (Form, #cute{} = Acc) ->
                       case {is_cut_variable(Form), erl_syntax:is_literal(Form)} of
                           {true, false} ->
-                              Variable = variable(Line, Type),
+                              Variable = variable(Pos, Type),
                               Acc#cute{variables=[Variable | Acc#cute.variables],
                                        arguments=[Variable | Acc#cute.arguments]};
                           {false, true} ->
                               Acc#cute{arguments=[Form | Acc#cute.arguments]};
                           {false, false} ->
-                              {Variable, Match} = match(Line, Type, Form),
+                              {Variable, Match} = match(Pos, Type, Form),
                               Acc#cute{matches=[Match | Acc#cute.matches],
                                        arguments=[Variable | Acc#cute.arguments]}
                       end
@@ -335,9 +337,9 @@ cutes(Line, Type, Forms) ->
               #cute{},
               Forms)).
 
-name_cutes(Line, Name) ->
+name_cutes(Pos, Name) ->
     Parts = split_name(Name),
-    Cute = cutes(Line, name, Parts),
+    Cute = cutes(Pos, name, Parts),
     Cute#cute{arguments=name(Cute#cute.arguments)}.
 
 %% @private
@@ -358,9 +360,10 @@ cut_function(MarkerLine, [MarkerArgument])->
             ?IF_DEBUG(ok = io:format(
                              "partial:cut_function/2 Original:~n~p~n",
                              [MarkerArgument])),
-            Line = erl_syntax:get_pos(MarkerArgument),
-            NameCut = name_cuts(Line, Name),
-            Cut = cuts(Line, cut, Args),
+            Pos = erl_syntax:get_pos(MarkerArgument),
+            Line = get_line(Pos),
+            NameCut = name_cuts(Pos, Name),
+            Cut = cuts(Pos, cut, Args),
             CutFun = merl:qquote(Line,
                                  "fun (_@@variables) ->"
                                  " _@name(_@@arguments)"
@@ -407,9 +410,10 @@ cute_function(MarkerLine, [MarkerArgument])->
             ?IF_DEBUG(ok = io:format(
                              "partial:cute_function/2 Original:~n~p~n",
                              [MarkerArgument])),
-            Line = erl_syntax:get_pos(MarkerArgument),
-            NameCute = name_cutes(Line, Name),
-            Cute = cutes(Line, cute, Args),
+            Pos = erl_syntax:get_pos(MarkerArgument),
+            Line = get_line(Pos),
+            NameCute = name_cutes(Pos, Name),
+            Cute = cutes(Pos, cute, Args),
             CuteFun = merl:qquote(Line,
                                   "(fun () ->"
                                   " _@@matches,"
@@ -434,3 +438,11 @@ cute_function(MarkerLine, MarkerArguments)->
       io_lib:format(
         "partial:cute/1 requires a single argument, got ~b",
         [length(MarkerArguments)])).
+
+get_line(Pos) ->
+    case erl_anno:is_anno(Pos) of
+        true ->
+            erl_anno:line(Pos);
+        false ->
+            Pos
+    end.
